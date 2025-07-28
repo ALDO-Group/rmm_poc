@@ -1,0 +1,2 @@
+sap.ui.define(["sap/fe/test/ListReport"],function(t){"use strict";var s={actions:{},assertions:{}};return new t({appId:"zrmmbc.displayimudetails",componentId:"ArticlesList",contextPath:"/Articles"},s)});
+//# sourceMappingURL=ArticlesList.js.map

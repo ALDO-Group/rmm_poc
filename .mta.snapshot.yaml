@@ -1,0 +1,223 @@
+_schema-version: '3.1'
+ID: zrmm_bc
+version: 1.0.0
+description: A simple CAP project.
+parameters:
+  deploy_mode: html5-repo
+  enable-parallel-deployments: true
+  subdomain: asi-9mez6jnv
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - rm -rf build/dist
+        - mkdir -p build/dist
+        - rm -rf build/ui-deployer
+        - mkdir -p build/ui-deployer
+    - builder: custom
+      commands:
+        - npm install --production
+        - >-
+          bash -c "cds -v | grep 'cds-dk' || npm i --production --no-save
+          @sap/cds-dk"
+        - bash -c "export PATH=$PATH:$(pwd)/node_modules/.bin"
+        - cds build --production
+  after-all:
+    - builder: custom
+      commands:
+        - npm install
+modules:
+  - name: zrmm_bc-zrmmbc.displayimudetails
+    type: html5
+    path: app/zrmm_bc.displayimudetails
+    build-parameters:
+      builder: custom
+      commands:
+        - rm -rf dist-zip dist
+        - npm install
+        - >-
+          npx -p @ui5/cli@^3.0.0 ui5 build --dest dist
+          --include-task=generateCachebusterInfo
+        - mkdir dist-zip
+        - >-
+          bash -c "cd dist && npx bestzip
+          ../dist-zip/zrmmbcdisplayimudetails.zip *"
+      _artifactName: zrmmbcdisplayimudetails.zip
+      supported-platforms: []
+      build-result: dist-zip
+  - name: zrmm_bc-db-deployer
+    type: hdb
+    path: gen/db
+    parameters:
+      buildpack: nodejs_buildpack
+    build-parameters:
+      builder: npm
+      ignore:
+        - node_modules
+        - package-lock.json
+    requires:
+      - name: zrmm_bc-service-uaa
+      - name: zrmm_bc-service-db
+  - name: zrmm_bc-srv
+    type: nodejs
+    path: gen/srv
+    parameters:
+      memory: 256MB
+    provides:
+      - name: srv-api
+        properties:
+          srv-url: ${default-url}
+    build-parameters:
+      builder: npm
+      ignore:
+        - node_modules
+        - package-lock.json
+    requires:
+      - name: zrmm_bc-service-uaa
+      - name: zrmm_bc-service-db
+      - name: zrmm_bc-service-destination
+      - name: zrmm_bc-service-metadata
+      - name: zrmm_bc-service-connectivity
+      - name: zrmm_bc-service-logs
+  - name: zrmm_bc-aux-destinations
+    type: com.sap.application.content
+    parameters:
+      content:
+        subaccount:
+          existing_destinations_policy: update
+          destinations:
+            - Authentication: OAuth2UserTokenExchange
+              Name: zrmm_bc-service-uaa
+              ServiceInstanceName: zrmm_bc-uaa
+              ServiceKeyName: zrmm_bc-uaa-key
+              sap.cloud.service: lcap.zrmm_bc
+            - Authentication: OAuth2UserTokenExchange
+              Name: zrmm_bc-app-srv
+              TokenServiceInstanceName: zrmm_bc-uaa
+              TokenServiceKeyName: zrmm_bc-uaa-key
+              URL: ~{srv-api/srv-url}
+              sap.cloud.service: lcap.zrmm_bc
+            - Name: zrmm_bc-service-html5-apps-repo-host
+              ServiceInstanceName: zrmm_bc-html5-apps-repo-host
+              ServiceKeyName: zrmm_bc-html5-apps-repo-host-key
+              sap.cloud.service: lcap.zrmm_bc
+            - Authentication: OAuth2UserTokenExchange
+              Name: zrmm_bc-zrmm_bc.zrmm_bcSrv
+              TokenServiceInstanceName: zrmm_bc-uaa
+              TokenServiceKeyName: zrmm_bc-uaa-key
+              URL: ~{srv-api/srv-url}/service/zrmm_bc
+              sap.cloud.service: lcap.zrmm_bc
+              sap.applicationdevelopment.actions.enabled: false
+              sap.build.usage: CAP
+              sap.processautomation.enabled: false
+              HTML5.DynamicDestination: false
+              WebIDEEnabled: false
+              MobileEnabled: false
+              AppgyverEnabled: false
+    build-parameters:
+      no-source: true
+    requires:
+      - name: zrmm_bc-service-uaa
+        parameters:
+          service-key:
+            name: zrmm_bc-uaa-key
+      - name: srv-api
+      - name: zrmm_bc-service-html5-apps-repo-host
+        parameters:
+          service-key:
+            name: zrmm_bc-html5-apps-repo-host-key
+      - name: zrmm_bc-service-destination
+        parameters:
+          content-target: true
+  - name: zrmm_bc-launchpad
+    type: html5
+    path: build/launchpad
+    build-parameters:
+      builder: custom
+      commands:
+        - npm install
+        - >-
+          npx -p @ui5/cli@^3.0.0 ui5 build --dest dist
+          --include-task=generateCachebusterInfo
+        - bash -c "cd dist && npx bestzip ../../../build/dist/launchpad.zip *"
+        - rm -rf dist
+      _artifactName: launchpad.zip
+      supported-platforms: []
+      build-result: ../../build/dist
+  - name: zrmm_bc-aux-ui-deployer
+    type: com.sap.application.content
+    path: build/ui-deployer
+    build-parameters:
+      build-result: resources
+      requires:
+        - name: zrmm_bc-zrmmbc.displayimudetails
+          artifacts:
+            - zrmmbcdisplayimudetails.zip
+          target-path: resources
+        - name: zrmm_bc-launchpad
+          artifacts:
+            - launchpad.zip
+          target-path: resources
+    requires:
+      - name: zrmm_bc-service-html5-apps-repo-host
+        parameters:
+          content-target: true
+resources:
+  - type: org.cloudfoundry.managed-service
+    name: zrmm_bc-service-uaa
+    parameters:
+      service: xsuaa
+      service-plan: application
+      service-name: zrmm_bc-uaa
+      path: xs-security.json
+      config:
+        oauth2-configuration:
+          redirect-uris:
+            - https://${subdomain}.launchpad.${default-domain}/login/*
+            - https://${subdomain}.${default-domain}/login/*
+          credential-types:
+            - binding-secret
+            - x509
+        xsappname: zrmm_bc-${space}
+        role-collections: []
+  - type: org.cloudfoundry.managed-service
+    name: zrmm_bc-service-db
+    parameters:
+      service: hana
+      service-plan: hdi-shared
+      service-name: zrmm_bc-db
+  - type: org.cloudfoundry.managed-service
+    name: zrmm_bc-service-destination
+    parameters:
+      service: destination
+      service-plan: lite
+      service-name: zrmm_bc-destination
+      config:
+        HTML5Runtime_enabled: true
+        version: 1.0.0
+  - type: org.cloudfoundry.user-provided-service
+    name: zrmm_bc-service-metadata
+    parameters:
+      service: metadata
+      service-plan: standard
+      service-name: zrmm_bc-metadata
+      config:
+        default-domain: ${default-domain}
+  - type: org.cloudfoundry.managed-service
+    name: zrmm_bc-service-connectivity
+    parameters:
+      service: connectivity
+      service-plan: lite
+      service-name: zrmm_bc-connectivity
+  - type: org.cloudfoundry.managed-service
+    name: zrmm_bc-service-logs
+    parameters:
+      service: application-logs
+      service-plan: lite
+      service-name: zrmm_bc-logs
+  - type: org.cloudfoundry.managed-service
+    name: zrmm_bc-service-html5-apps-repo-host
+    parameters:
+      service: html5-apps-repo
+      service-plan: app-host
+      service-name: zrmm_bc-html5-apps-repo-host

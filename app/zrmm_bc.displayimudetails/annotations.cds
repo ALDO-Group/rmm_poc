@@ -1,0 +1,1 @@
+using zrmm_bcSrv as service from '../../srv/service';

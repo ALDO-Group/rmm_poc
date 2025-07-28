@@ -1,0 +1,2 @@
+sap.ui.require(["sap/fe/test/JourneyRunner","zrmmbc/displayimudetails/test/integration/FirstJourney","zrmmbc/displayimudetails/test/integration/pages/ArticlesList","zrmmbc/displayimudetails/test/integration/pages/ArticlesObjectPage"],function(e,i,t,s){"use strict";var e=new e({launchUrl:sap.ui.require.toUrl("zrmmbc/displayimudetails")+"/index.html"});e.run({pages:{onTheArticlesList:t,onTheArticlesObjectPage:s}},i.run)});
+//# sourceMappingURL=opaTests.qunit.js.map
